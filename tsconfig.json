@@ -1,0 +1,26 @@
+{
+    "compilerOptions": {
+      "declaration": true,
+      "lib": [
+        "es5",
+        "es2015.core",
+        "es2015.promise"
+      ],
+      "module": "commonjs",
+      "noFallthroughCasesInSwitch": true,
+      "noImplicitAny": true,
+      "noImplicitReturns": true,
+      "noImplicitThis": true,
+      "noUnusedLocals": true,
+      "noUnusedParameters": true,
+      "outDir": "dist",
+      "pretty": true,
+      "strictNullChecks": true,
+      "suppressImplicitAnyIndexErrors": true,
+      "target": "es5"
+    },
+    "exclude": [
+      "node_modules",
+      "index.d.ts"
+    ]
+}
