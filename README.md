@@ -2,7 +2,7 @@
 
 [![GitHub license](https://img.shields.io/github/license/KnisterPeter/hinkelstein.svg)](https://github.com/KnisterPeter/hinkelstein)
 [![Travis](https://img.shields.io/travis/KnisterPeter/hinkelstein.svg)](https://travis-ci.org/KnisterPeter/hinkelstein)
-[![appveyor](https://ci.appveyor.com/api/projects/status/orjc50h3g8sh7x08/branch/master?svg=true)](https://ci.appveyor.com/project/KnisterPeter/paeckchen/branch/master)
+[![appveyor](https://ci.appveyor.com/api/projects/status/mtdvnje0y7vcvk39/branch/master?svg=true)](https://ci.appveyor.com/project/KnisterPeter/hinkelstein/branch/master)
 [![Coveralls branch](https://img.shields.io/coveralls/KnisterPeter/hinkelstein/master.svg)](https://coveralls.io/github/KnisterPeter/hinkelstein)
 [![David](https://img.shields.io/david/KnisterPeter/hinkelstein.svg)](https://david-dm.org/KnisterPeter/hinkelstein)
 [![David](https://img.shields.io/david/dev/KnisterPeter/hinkelstein.svg)](https://david-dm.org/KnisterPeter/hinkelstein#info=devDependencies&view=table)
