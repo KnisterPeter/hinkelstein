@@ -74,6 +74,14 @@
       "source-map-support/register"
     ]
   },
+  "nyc": {
+    "exclude": [
+      "node_modules",
+      "coverage",
+      "dist/test",
+      "test"
+    ]
+  },
   "config": {
     "commitizen": {
       "path": "./node_modules/cz-customizable"
