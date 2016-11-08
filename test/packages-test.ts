@@ -33,7 +33,7 @@ test('getOrderedPackages should return a list of packages ordered by dependency 
     return Promise.resolve(['a', 'b', 'c']);
   };
   host.readJson = path => {
-    if (path.endsWith('a/package.json')) {
+    if (path.endsWith('a/package.json') || path.endsWith('a\\package.json')) {
       return Promise.resolve({
         name: 'a',
         dependencies: {
@@ -41,12 +41,12 @@ test('getOrderedPackages should return a list of packages ordered by dependency 
         }
       });
     }
-    if (path.endsWith('b/package.json')) {
+    if (path.endsWith('b/package.json') || path.endsWith('b\\package.json')) {
       return Promise.resolve({
         name: 'b'
       });
     }
-    if (path.endsWith('c/package.json')) {
+    if (path.endsWith('c/package.json') || path.endsWith('c\\package.json')) {
       return Promise.resolve({
         name: 'c',
         devDependencies: {
