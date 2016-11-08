@@ -1,122 +1,18 @@
 import * as util from 'util';
 import * as path from 'path';
-import * as fs from 'fs';
 import * as childProcess from 'child_process';
 import * as commonTags from 'common-tags';
-import * as fsExtra from 'fs-extra';
 import * as NpmRegistryClient from 'npm-registry-client';
 import * as conventionalCommitsParser from 'conventional-commits-parser';
 import * as semver from 'semver';
 
+import {forEach} from './foreach';
+import {PackageJson, packagesDirectory, getPackages, getPackageJson,
+  getOrderedPackages, linkDependencies, withPatchedPackageJson} from './packages';
+import {Host, DefaultHost} from './io';
+
 const gitlog = util.debuglog('git');
 const npmlog = util.debuglog('npm');
-
-function promisify(fn: Function): (...args: any[]) => Promise<any> {
-  return function (...args): Promise<any> {
-    return new Promise((resolve, reject) => {
-      fn.apply(null, ([] as any[]).concat(args, function (...resultArgs: any[]): void {
-        if (resultArgs[0]) {
-          return reject(resultArgs[0]);
-        }
-        resolve.apply(null, resultArgs.slice(1));
-      }));
-    });
-  };
-}
-
-const fsReaddir: (path: string) => Promise<string[]> = promisify(fs.readdir);
-const fsReadfile: (path: string) => Promise<string> = promisify(fs.readFile);
-const fsOutputFile: (path: string, data: string) => Promise<void> = promisify(fsExtra.outputFile);
-const fsCopy: (from: string, to: string) => Promise<void> = promisify(fsExtra.copy);
-const fsMove: (from: string, to: string, opts?: any) => Promise<void> = promisify((fsExtra  as any).move);
-const fsRemove: (path: string) => Promise<void> = promisify(fsExtra.remove);
-const fsReadJson: (path: string) => Promise<any> = promisify(fsExtra.readJson);
-const fsWriteJson: (path: string, data: any) => Promise<void> = promisify(fsExtra.writeJson);
-
-const packagesDirectory = path.join(process.cwd(), 'packages');
-
-interface PackageJson {
-  name: string;
-  version: string;
-  scripts: {
-    [name: string]: string;
-  };
-  devDependencies: {
-    [name: string]: string;
-  };
-  dependencies: {
-    [name: string]: string;
-  };
-  publishConfig?: any;
-}
-
-function forEach<T>(list: T[], task: (task: T) => Promise<boolean>): Promise<void> {
-  return list.reduce((promise, entry) => {
-    return promise.then(continueReduce => {
-      if (continueReduce === false) {
-        console.log(`\n${commonTags.stripIndent`
-          -------------------------------------------------------------------------------
-
-            Skipping ${entry}
-
-          -------------------------------------------------------------------------------
-        `}\n`);
-        return false;
-      }
-      return task(entry);
-    });
-  }, Promise.resolve(true));
-}
-
-function getPackages(): Promise<string[]> {
-  return fsReaddir(packagesDirectory);
-}
-
-function readAllPackageJsonFiles(list: string[]): Promise<PackageJson[]> {
-  return Promise.all(list.map(file => getPackageJson(file)));
-}
-
-function sortDependencys(list: string[], pkgs: PackageJson[]): string[] {
-  list.sort((left, right) => {
-    let pkg = pkgs.find(needle => right === needle.name);
-    if (!pkg) {
-      throw new Error('No matching package.json found');
-    }
-    if (left in pkg.devDependencies || left in pkg.dependencies) {
-      return -1;
-    }
-    pkg = pkgs.find(needle => left === needle.name);
-    if (!pkg) {
-      throw new Error('No matching package.json found');
-    }
-    if (right in pkg.devDependencies || right in pkg.dependencies) {
-      return 1;
-    }
-    return 0;
-  });
-  return list;
-}
-
-function getOrderedPackages(): Promise<string[]> {
-  return getPackages()
-    .then(packages =>
-      readAllPackageJsonFiles(packages)
-        .then(pkgs => ({packages, pkgs})))
-    .then(context => sortDependencys(context.packages, context.pkgs));
-}
-
-function getPackageJson(packageDir: string): Promise<PackageJson> {
-  return fsReadJson(path.join(packagesDirectory, packageDir, 'package.json'));
-}
-
-function patchPackageJson(pkg: PackageJson): Promise<PackageJson> {
-  return getPackages()
-    .then(packages => {
-      packages.forEach(file => delete pkg.devDependencies[file]);
-      packages.forEach(file => delete pkg.dependencies[file]);
-    })
-    .then(() => pkg);
-}
 
 function npm(packageDir: string, command: string): Promise<void> {
   return Promise.resolve()
@@ -130,53 +26,6 @@ function npm(packageDir: string, command: string): Promise<void> {
       npmlog(`executing '${cmd}'`);
       childProcess.execSync(cmd, opts);
     });
-}
-
-function getPackageDependencies(pkg: PackageJson): Promise<string[]> {
-  return getPackages()
-    .then(packages => {
-      return ([] as string[]).concat(
-        packages.filter(file => file in pkg.devDependencies),
-        packages.filter(file => file in pkg.dependencies)
-      );
-    });
-}
-
-function linkDependencies(packageDir: string): Promise<void> {
-  return getPackages()
-    .then(() => {
-      return getPackageJson(packageDir)
-        .then(pkg => getPackageDependencies(pkg))
-        .then(dependencies => {
-          return forEach(dependencies,
-              dependency => {
-                const dependecyModulPath = path.join(packagesDirectory, packageDir, 'node_modules', dependency);
-                return fsOutputFile(path.join(dependecyModulPath, 'index.js'),
-                    `module.exports = require('../../../${dependency}/')`)
-                  .then(() => fsOutputFile(path.join(dependecyModulPath, 'index.d.ts'),
-                    `export * from '../../../${dependency}/index';`));
-              });
-        });
-    });
-}
-
-function withPatchedPackageJson(packageDir: string, fn: () => Promise<void>): Promise<void> {
-  const packageJsonPath = path.join(packagesDirectory, packageDir, 'package.json');
-  const packageJsonBackupPath = path.join(packagesDirectory, packageDir, 'package.json.orig');
-  return fsCopy(packageJsonPath, packageJsonBackupPath)
-    .then(() => {
-      return fsReadJson(packageJsonPath)
-        .then(pkg => patchPackageJson(pkg))
-        .then(pkg => fsWriteJson(packageJsonPath, pkg))
-        .then(() => fn())
-        .catch(err => {
-          return fsMove(packageJsonBackupPath, packageJsonPath, {clobber: true})
-            .then(() => {
-              throw err;
-            });
-        });
-    })
-    .then(() => fsMove(packageJsonBackupPath, packageJsonPath, {clobber: true}));
 }
 
 function remoteNpmGet(packageDir: string): Promise<NpmRegistryClient.Data> {
@@ -222,9 +71,9 @@ interface ReleaseData {
   requireRelease?: boolean;
 }
 
-function getReleaseData(packageDir: string, npm: NpmRegistryClient.Data): Promise<ReleaseData> {
+function getReleaseData(host: Host, packageDir: string, npm: NpmRegistryClient.Data): Promise<ReleaseData> {
   return Promise.resolve()
-    .then(() => getPackageJson(packageDir)
+    .then(() => getPackageJson(host, packageDir)
         .then(pkg => ({
           npm,
           pkg
@@ -341,8 +190,8 @@ function git(packageDir: string, command: string): Promise<string> {
     .then(buffer => buffer.toString().trim());
 }
 
-function runOnPackages(commands: Commands, command: string, args: string[]): Promise<void> {
-  return getOrderedPackages()
+function runOnPackages(host: Host, commands: Commands, command: string, args: string[]): Promise<void> {
+  return getOrderedPackages(host)
     .then(packages => {
       return forEach(packages, file => {
         return commands[command].apply(null, ([] as any).concat([file], args));
@@ -350,40 +199,40 @@ function runOnPackages(commands: Commands, command: string, args: string[]): Pro
     });
 }
 
-function runCommandBootstrap(packageDir: string): Promise<void> {
+function runCommandBootstrap(host: Host, packageDir: string): Promise<void> {
   return Promise.resolve()
     .then(() => {
-      return withPatchedPackageJson(packageDir, () => {
+      return withPatchedPackageJson(host, packageDir, () => {
         return npm(packageDir, 'install')
           .then(() => npm(packageDir, 'prune'));
       })
-      .then(() => linkDependencies(packageDir));
+      .then(() => linkDependencies(host, packageDir));
     });
 }
 
-function runCommandReset(packageDir: string): Promise<void> {
-  return fsRemove(path.join(packagesDirectory, packageDir, 'node_modules'));
+function runCommandReset(host: Host, packageDir: string): Promise<void> {
+  return host.remove(path.join(packagesDirectory, packageDir, 'node_modules'));
 }
 
-function updatePackageJson(packageDir: string, fn: (input: string) => string): Promise<void> {
+function updatePackageJson(host: Host, packageDir: string, fn: (input: string) => string): Promise<void> {
   const packageJson = path.join(packagesDirectory, packageDir, 'package.json');
-  return fsReadfile(packageJson)
+  return host.readfile(packageJson)
     .then(buffer => buffer.toString())
     .then(data => fn(data))
-    .then(data => fsOutputFile(packageJson, data));
+    .then(data => host.writeFile(packageJson, data));
 }
 
-function incrementPackageVersion(packageDir: string, data: ReleaseData): Promise<void> {
-  return updatePackageJson(packageDir, content =>
+function incrementPackageVersion(host: Host, packageDir: string, data: ReleaseData): Promise<void> {
+  return updatePackageJson(host, packageDir, content =>
     content.replace(/^(\s*"version"\s*:\s*")\d+(?:\.\d+(?:\.\d+)?)?("\s*(?:,\s*)?)$/gm, `$1${data.nextVersion}$2`));
 }
 
-function updateDependencies(packageDir: string, data: ReleaseData): Promise<void> {
-  return getPackages()
+function updateDependencies(host: Host, packageDir: string, data: ReleaseData): Promise<void> {
+  return getPackages(host)
     .then(packages => forEach(packages, dependency => {
       if (dependency in data.pkg.devDependencies || dependency in data.pkg.dependencies) {
-        return getPackageJson(dependency)
-          .then(pkg => updatePackageJson(packageDir, content =>
+        return getPackageJson(host, dependency)
+          .then(pkg => updatePackageJson(host, packageDir, content =>
             content.replace(new RegExp(
               `^(\\s*"${dependency}"\\s*:\\s*")\\d+(?:\\.\\d+(?:\\.\\d+)?)?("\\s*(?:,\\s*)?)$`, 'gm'),
               `$1${pkg.version}$2`)));
@@ -392,7 +241,7 @@ function updateDependencies(packageDir: string, data: ReleaseData): Promise<void
     }));
 }
 
-function runCommandRelease(packageDir: string): Promise<void> {
+function runCommandRelease(host: Host, packageDir: string): Promise<void> {
   return git('..', `status --porcelain`)
     .then(stdout => {
       if (stdout !== '') {
@@ -400,16 +249,16 @@ function runCommandRelease(packageDir: string): Promise<void> {
       }
     })
     .then(() => remoteNpmGet(packageDir))
-    .then(npm => getReleaseData(packageDir, npm))
+    .then(npm => getReleaseData(host, packageDir, npm))
     .then(data => getReleaseCommits(packageDir, data))
     .then(data => getNextVersion(packageDir, data))
     .then(data => {
       if (data.requireRelease) {
         outputReleaseSummary(packageDir, data);
-        return incrementPackageVersion(packageDir, data)
-          .then(() => updateDependencies(packageDir, data))
-          .then(() => runCommandNpmRun(packageDir, 'release'))
-          .then(() => runCommandNpmRun(packageDir, 'test'))
+        return incrementPackageVersion(host, packageDir, data)
+          .then(() => updateDependencies(host, packageDir, data))
+          .then(() => runCommandNpmRun(host, packageDir, 'release'))
+          .then(() => runCommandNpmRun(host, packageDir, 'test'))
           .then(() => git('..', `status --porcelain`))
           .then(stdout => {
             if (stdout !== '') {
@@ -445,31 +294,31 @@ function getCommitList(prepend: string, append: string, data: ReleaseData): stri
     .join('');
 }
 
-function runCommandTestRelease(packageDir: string): Promise<void> {
+function runCommandTestRelease(host: Host, packageDir: string): Promise<void> {
   return remoteNpmGet(packageDir)
-    .then(npm => getReleaseData(packageDir, npm))
+    .then(npm => getReleaseData(host, packageDir, npm))
     .then(data => getReleaseCommits(packageDir, data))
     .then(data => getNextVersion(packageDir, data))
     .then(data => outputReleaseSummary(packageDir, data));
 }
 
-function runCommandNpmRun(packageDir: string, task: string): Promise<void> {
+function runCommandNpmRun(host: Host, packageDir: string, task: string): Promise<void> {
   return Promise.resolve()
-    .then(() => getPackageJson(packageDir))
+    .then(() => getPackageJson(host, packageDir))
     .then(pkg => task in pkg.scripts)
     .then(hasTask => hasTask ? npm(packageDir, `run ${task}`) : console.log(`No ${task} script for ${packageDir}`));
 }
 
-function runCommandNpm(packageDir: string, args: string[]): Promise<void> {
+function runCommandNpm(host: Host, packageDir: string, args: string[]): Promise<void> {
   return Promise.resolve()
-    .then(() => withPatchedPackageJson(packageDir, () => {
+    .then(() => withPatchedPackageJson(host, packageDir, () => {
       return npm(packageDir, args.join(' '));
     }));
 }
 
-function runCommandPublish(packageDir: string): Promise<void> {
+function runCommandPublish(host: Host, packageDir: string): Promise<void> {
   return remoteNpmGet(packageDir)
-    .then(npm => getReleaseData(packageDir, npm))
+    .then(npm => getReleaseData(host, packageDir, npm))
     .then(data => {
       if (data.lastVersion === data.pkg.version) {
         console.log(`No publish for ${packageDir} requried; Already published to npm`);
@@ -499,9 +348,9 @@ function runCommandPublish(packageDir: string): Promise<void> {
         .then(() => git(path.join('..', 'publish-temp'), `checkout ${tag}`))
         .then(() => npm(path.join('..', 'publish-temp', 'packages', packageDir), 'install'))
         .then(() => npm(path.join('..', 'publish-temp', 'packages', packageDir), 'publish'))
-        .then(() => fsRemove(path.join(process.cwd(), 'publish-temp')))
+        .then(() => host.remove(path.join(process.cwd(), 'publish-temp')))
         .catch(err => {
-          return fsRemove(path.join(process.cwd(), 'publish-temp')).then(() => {
+          return host.remove(path.join(process.cwd(), 'publish-temp')).then(() => {
             throw err;
           });
         })
@@ -510,16 +359,16 @@ function runCommandPublish(packageDir: string): Promise<void> {
 }
 
 interface Commands {
-  bootstrap(packageDir: string): Promise<void>;
-  reset(packageDir: string): Promise<void>;
-  testRelease(packageDir: string): Promise<void>;
-  release(packageDir: string): Promise<void>;
-  publish(packageDir: string): Promise<void>;
-  run(packageDir: string, task: string): Promise<void>;
-  npm(packageDir: string): Promise<void>;
+  bootstrap(host: Host, packageDir: string): Promise<void>;
+  reset(host: Host, packageDir: string): Promise<void>;
+  testRelease(host: Host, packageDir: string): Promise<void>;
+  release(host: Host, packageDir: string): Promise<void>;
+  publish(host: Host, packageDir: string): Promise<void>;
+  run(host: Host, packageDir: string, task: string): Promise<void>;
+  npm(host: Host, packageDir: string): Promise<void>;
 }
 const commands: Commands = {
-  bootstrap(packageDir): Promise<void> {
+  bootstrap(host, packageDir): Promise<void> {
     console.log(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
 
@@ -527,9 +376,9 @@ const commands: Commands = {
 
       -------------------------------------------------------------------------------
     `}\n`);
-    return runCommandBootstrap(packageDir);
+    return runCommandBootstrap(host, packageDir);
   },
-  reset(packageDir): Promise<void>  {
+  reset(host, packageDir): Promise<void>  {
     console.log(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
 
@@ -537,9 +386,9 @@ const commands: Commands = {
 
       -------------------------------------------------------------------------------
     `}\n`);
-    return runCommandReset(packageDir);
+    return runCommandReset(host, packageDir);
   },
-  testRelease(packageDir): Promise<void>  {
+  testRelease(host, packageDir): Promise<void>  {
     console.log(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
 
@@ -547,9 +396,9 @@ const commands: Commands = {
 
       -------------------------------------------------------------------------------
     `}\n`);
-    return runCommandTestRelease(packageDir);
+    return runCommandTestRelease(host, packageDir);
   },
-  release(packageDir): Promise<void>  {
+  release(host, packageDir): Promise<void>  {
     console.log(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
 
@@ -557,9 +406,9 @@ const commands: Commands = {
 
       -------------------------------------------------------------------------------
     `}\n`);
-    return runCommandRelease(packageDir);
+    return runCommandRelease(host, packageDir);
   },
-  publish(packageDir): Promise<void>  {
+  publish(host, packageDir): Promise<void>  {
     console.log(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
 
@@ -567,9 +416,9 @@ const commands: Commands = {
 
       -------------------------------------------------------------------------------
     `}\n`);
-    return runCommandPublish(packageDir);
+    return runCommandPublish(host, packageDir);
   },
-  run(packageDir, task): Promise<void>  {
+  run(host, packageDir, task): Promise<void>  {
     console.log(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
 
@@ -577,9 +426,9 @@ const commands: Commands = {
 
       -------------------------------------------------------------------------------
     `}\n`);
-    return runCommandNpmRun(packageDir, task);
+    return runCommandNpmRun(host, packageDir, task);
   },
-  npm(packageDir): Promise<void>  {
+  npm(host, packageDir): Promise<void>  {
     const args = Array.prototype.slice.call(arguments).slice(1);
 
     console.log(`\n${commonTags.stripIndent`
@@ -589,7 +438,7 @@ const commands: Commands = {
 
       -------------------------------------------------------------------------------
     `}\n`);
-    return runCommandNpm(packageDir, args);
+    return runCommandNpm(host, packageDir, args);
   }
 };
 
@@ -601,7 +450,8 @@ if (process.argv.length < 3) {
 const command = process.argv[2];
 const commandArguments = process.argv.slice(3);
 const start = new Date().getTime();
-runOnPackages(commands, command, commandArguments)
+const host = new DefaultHost();
+runOnPackages(host, commands, command, commandArguments)
   .then(() => {
     const end = new Date().getTime();
     console.log(`\n${commonTags.stripIndent`
