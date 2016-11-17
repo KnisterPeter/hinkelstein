@@ -43,7 +43,7 @@
     "@types/fs-extra": "0.0.34",
     "@types/node": "6.0.46",
     "@types/semver": "5.3.30",
-    "ava": "0.16.0",
+    "ava": "0.17.0",
     "conventional-changelog-cli": "1.2.0",
     "conventional-changelog-lint": "1.1.0",
     "coveralls": "2.11.15",
