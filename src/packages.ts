@@ -28,20 +28,24 @@ function readAllPackageJsonFiles(host: Host, list: string[]): Promise<PackageJso
   return Promise.all(list.map(file => getPackageJson(host, file)));
 }
 
+function findPkg(needle: string, pkgs: PackageJson[]): PackageJson {
+  const pkg = pkgs.find(haystack => needle === haystack.name);
+  if (!pkg) {
+    throw new Error('No matching package.json found');
+  }
+  return pkg;
+};
+
+function containsDependency(name: string, pkg: PackageJson): boolean {
+  return name in (pkg.devDependencies || {}) || name in (pkg.dependencies || {});
+}
+
 function sortDependencys(list: string[], pkgs: PackageJson[]): string[] {
   list.sort((left, right) => {
-    let pkg = pkgs.find(needle => right === needle.name);
-    if (!pkg) {
-      throw new Error('No matching package.json found');
-    }
-    if (left in (pkg.devDependencies || {}) || left in (pkg.dependencies || {})) {
+    if (containsDependency(left, findPkg(right, pkgs))) {
       return -1;
     }
-    pkg = pkgs.find(needle => left === needle.name);
-    if (!pkg) {
-      throw new Error('No matching package.json found');
-    }
-    if (right in (pkg.devDependencies || {}) || right in (pkg.dependencies || {})) {
+    if (containsDependency(right, findPkg(left, pkgs))) {
       return 1;
     }
     return 0;

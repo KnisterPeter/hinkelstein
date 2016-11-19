@@ -20,7 +20,7 @@
     "build:watch": "tsc --sourceMap --watch",
     "pretest": "npm run clean && npm run build:inline",
     "test": "nyc --all --reporter lcov ./node_modules/.bin/ava",
-    "linter": "tslint 'src/**/*.ts'",
+    "linter": "tslint --project ./tsconfig.json --type-check",
     "prerelease": "npm test && npm run build",
     "release": "standard-version",
     "postrelease": "git push --follow-tags origin master && npm publish"
