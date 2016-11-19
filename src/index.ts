@@ -1,15 +1,16 @@
-import * as util from 'util';
-import * as path from 'path';
 import * as childProcess from 'child_process';
+import * as path from 'path';
+import * as util from 'util';
+
 import * as commonTags from 'common-tags';
-import * as NpmRegistryClient from 'npm-registry-client';
 import * as conventionalCommitsParser from 'conventional-commits-parser';
+import * as NpmRegistryClient from 'npm-registry-client';
 import * as semver from 'semver';
 
 import {forEach} from './foreach';
+import {Host, DefaultHost} from './io';
 import {PackageJson, packagesDirectory, getPackages, getPackageJson,
   getOrderedPackages, linkDependencies, withPatchedPackageJson} from './packages';
-import {Host, DefaultHost} from './io';
 
 const gitlog = util.debuglog('git');
 const npmlog = util.debuglog('npm');
