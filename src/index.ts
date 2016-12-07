@@ -281,7 +281,7 @@ function runCommandRelease(host: Host, packageDir: string): Promise<void> {
       console.log(`No release for ${packageDir} required`);
       return true;
     })
-    .then(() => (void 0));;
+    .then(() => (void 0));
 }
 
 function outputReleaseSummary(packageDir: string, data: ReleaseData): void {
@@ -349,7 +349,7 @@ function runCommandPublish(host: Host, packageDir: string): Promise<void> {
               return commit;
             })
             .then(commit => git('..', `tag ${tag} ${commit!.hash}`))
-            .then(() => (void 0));;
+            .then(() => (void 0));
         })
         .then(() => git('..', 'push --tags'))
         .then(() => git('..', 'remote -v'))
@@ -366,7 +366,7 @@ function runCommandPublish(host: Host, packageDir: string): Promise<void> {
         })
         .then(() => false);
     })
-    .then(() => (void 0));;
+    .then(() => (void 0));
 }
 
 interface Commands {
