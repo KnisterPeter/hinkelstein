@@ -139,7 +139,7 @@ function getReleaseCommits(packageDir: string, data: ReleaseData): Promise<Relea
               });
           };
           return Promise.resolve()
-            .then(() => forEach(data.commits, commit => didUpdatePackageJson(commit)))
+            .then(() => forEach(data.commits, commit => (didUpdatePackageJson(commit), true)))
             .then(() => data);
         });
     });
@@ -197,7 +197,8 @@ function runOnPackages(host: Host, commands: Commands, command: string, args: st
       return forEach(packages, file => {
         return commands[command].apply(null, ([] as any).concat([file], args));
       });
-    });
+    })
+    .then(() => (void 0));
 }
 
 function runCommandBootstrap(host: Host, packageDir: string): Promise<void> {
@@ -233,13 +234,18 @@ function updateDependencies(host: Host, packageDir: string, data: ReleaseData): 
     .then(packages => forEach(packages, dependency => {
       if (dependency in data.pkg.devDependencies || dependency in data.pkg.dependencies) {
         return getPackageJson(host, dependency)
-          .then(pkg => updatePackageJson(host, packageDir, content =>
-            content.replace(new RegExp(
-              `^(\\s*"${dependency}"\\s*:\\s*")\\d+(?:\\.\\d+(?:\\.\\d+)?)?("\\s*(?:,\\s*)?)$`, 'gm'),
-              `$1${pkg.version}$2`)));
+          .then(pkg => {
+            updatePackageJson(host, packageDir, content => {
+              return content.replace(new RegExp(
+                `^(\\s*"${dependency}"\\s*:\\s*")\\d+(?:\\.\\d+(?:\\.\\d+)?)?("\\s*(?:,\\s*)?)$`, 'gm'),
+                `$1${pkg.version}$2`);
+            });
+            return true;
+          });
       }
-      return Promise.resolve(true);
-    }));
+      return true;
+    }))
+    .then(() => undefined);
 }
 
 function runCommandRelease(host: Host, packageDir: string): Promise<void> {
@@ -274,7 +280,8 @@ function runCommandRelease(host: Host, packageDir: string): Promise<void> {
       }
       console.log(`No release for ${packageDir} required`);
       return true;
-    });
+    })
+    .then(() => (void 0));;
 }
 
 function outputReleaseSummary(packageDir: string, data: ReleaseData): void {
@@ -330,7 +337,8 @@ function runCommandPublish(host: Host, packageDir: string): Promise<void> {
         .then(stdout => {
           if (stdout.match(new RegExp(`^${tag}$`, 'm'))) {
             return git(packageDir, `rev-list --abbrev-commit -n 1 ${tag}`)
-              .then(hash => console.log(`No git tag for ${packageDir} requried; Already tagged commit ${hash}`));
+              .then(hash => console.log(`No git tag for ${packageDir} requried; Already tagged commit ${hash}`))
+              .then(() => (void 0));
           }
           return getReleaseCommits(packageDir, data)
             .then(() => data.commits.find(commit => commit.updatesPackageJson || false))
@@ -340,23 +348,25 @@ function runCommandPublish(host: Host, packageDir: string): Promise<void> {
               }
               return commit;
             })
-            .then(commit => git('..', `tag ${tag} ${commit.hash}`));
+            .then(commit => git('..', `tag ${tag} ${commit!.hash}`))
+            .then(() => (void 0));;
         })
         .then(() => git('..', 'push --tags'))
         .then(() => git('..', 'remote -v'))
-        .then(stdout => (stdout.match(/^\w+\s+([^ ]+)\s+\(\w+\)$/m) as string[])[1])
-        .then(url => git('..', `clone ${url} publish-temp`))
+        .then((stdout: string) => (stdout.match(/^\w+\s+([^ ]+)\s+\(\w+\)$/m) as string[])[1])
+        .then((url: string) => git('..', `clone ${url} publish-temp`))
         .then(() => git(path.join('..', 'publish-temp'), `checkout ${tag}`))
         .then(() => npm(path.join('..', 'publish-temp', 'packages', packageDir), 'install'))
         .then(() => npm(path.join('..', 'publish-temp', 'packages', packageDir), 'publish'))
         .then(() => host.remove(path.join(process.cwd(), 'publish-temp')))
-        .catch(err => {
+        .catch((err: Error) => {
           return host.remove(path.join(process.cwd(), 'publish-temp')).then(() => {
             throw err;
           });
         })
         .then(() => false);
-    });
+    })
+    .then(() => (void 0));;
 }
 
 interface Commands {

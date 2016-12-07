@@ -15,7 +15,7 @@
       ],
       "isBuildCommand": true,
       "isWatching": true,
-      "problemMatcher": "$tsc"
+      "problemMatcher": "$tsc-watch"
     }
   ]
 }

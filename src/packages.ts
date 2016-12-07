@@ -96,10 +96,12 @@ export function linkDependencies(host: Host, packageDir: string): Promise<void> 
                 return host.writeFile(path.join(dependecyModulPath, 'index.js'),
                     `module.exports = require('../../../${dependency}/')`)
                   .then(() => host.writeFile(path.join(dependecyModulPath, 'index.d.ts'),
-                    `export * from '../../../${dependency}/index';`));
+                    `export * from '../../../${dependency}/index';`))
+                  .then(() => true);
               });
         });
-    });
+    })
+    .then(() => undefined);
 }
 
 export function withPatchedPackageJson(host: Host, packageDir: string, fn: () => Promise<void>): Promise<void> {

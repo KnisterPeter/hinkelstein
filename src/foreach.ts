@@ -1,6 +1,6 @@
 import * as commonTags from 'common-tags';
 
-export function forEach<T>(list: T[], task: (task: T) => Promise<boolean>): Promise<T> {
+export function forEach<T>(list: T[], task: (task: T) => boolean | T | Promise<boolean | T>): Promise<T> {
   return list.reduce((promise, entry) => {
     return promise.then(continueReduce => {
       if (continueReduce === false) {
@@ -15,5 +15,5 @@ export function forEach<T>(list: T[], task: (task: T) => Promise<boolean>): Prom
       }
       return task(entry);
     });
-  }, Promise.resolve(true));
+  }, Promise.resolve(true as any));
 }
