@@ -46,7 +46,6 @@
     "no-debugger": true,
     "no-empty": true,
     "no-eval": true,
-    "no-for-in-array": true,
     "no-inferrable-types": [true],
     "no-internal-module": true,
     "no-parameter-properties": true,
