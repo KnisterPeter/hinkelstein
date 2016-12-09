@@ -20,7 +20,7 @@
     "build:watch": "tsc --sourceMap --watch",
     "pretest": "npm run clean && npm run build:inline",
     "test": "nyc --all --reporter lcov ./node_modules/.bin/ava",
-    "linter": "tslint --project ./tsconfig.json",
+    "linter": "tslint --project ./tsconfig.json --type-check",
     "prerelease": "npm test && npm run build",
     "release": "standard-version",
     "postrelease": "git push --follow-tags origin master && npm publish"
@@ -39,6 +39,7 @@
   },
   "homepage": "https://github.com/KnisterPeter/hinkelstein#readme",
   "devDependencies": {
+    "@knisterpeter/standard-tslint": "^1.0.3",
     "@types/common-tags": "1.2.5",
     "@types/fs-extra": "0.0.34",
     "@types/node": "6.0.46",
