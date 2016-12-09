@@ -1,21 +1,13 @@
 {
-  // See https://go.microsoft.com/fwlink/?LinkId=733558
-  // for the documentation about the tasks.json format
   "version": "0.1.0",
-  "command": "npm",
+  "command": "${workspaceRoot}/node_modules/.bin/tsc",
+  "args": [
+    "--sourceMap",
+    "--watch"
+  ],
   "isShellCommand": true,
   "showOutput": "silent",
-  "suppressTaskName": true,
-  "tasks": [
-    {
-      "taskName": "build",
-      "args": [
-        "run",
-        "build:watch"
-      ],
-      "isBuildCommand": true,
-      "isWatching": true,
-      "problemMatcher": "$tsc-watch"
-    }
-  ]
+  "isBuildCommand": true,
+  "isWatching": true,
+  "problemMatcher": "$tsc-watch"
 }

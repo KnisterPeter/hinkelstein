@@ -22,6 +22,7 @@
     },
     "exclude": [
       "node_modules",
-      "index.d.ts"
+      "index.d.ts",
+      "dist"
     ]
 }
