@@ -2,25 +2,25 @@ import test from 'ava';
 
 import {forEach} from '../src/foreach';
 
-test('forEach should call each given item', t => {
+test('forEach should call each given item', async t => {
   let count = 0;
-  return forEach(['a', 'b'], task => {
-      count++;
-      return Promise.resolve(task);
-    })
-    .then(result => {
-      t.is(result, 'b');
-      t.is(count, 2);
-    });
+
+  const result = await forEach(['a', 'b'], task => {
+    count++;
+    return task;
+  });
+
+  t.is(result, 'b');
+  t.is(count, 2);
 });
 
-test('forEach should stop iterating at falsy result', t => {
+test('forEach should stop iterating at falsy result', async t => {
   let count = 0;
-  return forEach(['a', 'b'], () => {
-      count++;
-      return Promise.resolve(false);
-    })
-    .then(() => {
-      t.is(count, 1);
-    });
+
+  await forEach(['a', 'b'], () => {
+    count++;
+    return Promise.resolve(false);
+  });
+
+  t.is(count, 1);
 });

@@ -15,18 +15,15 @@ import {PackageJson, packagesDirectory, getPackages, getPackageJson,
 const gitlog = util.debuglog('git');
 const npmlog = util.debuglog('npm');
 
-function npm(packageDir: string, command: string): Promise<void> {
-  return Promise.resolve()
-    .then(() => {
-      const opts = {
-        cwd: path.join(packagesDirectory, packageDir),
-        env: process.env,
-        stdio: 'inherit'
-      };
-      const cmd = `npm ${command}`;
-      npmlog(`executing '${cmd}'`);
-      childProcess.execSync(cmd, opts);
-    });
+async function npm(packageDir: string, command: string): Promise<void> {
+  const opts = {
+    cwd: path.join(packagesDirectory, packageDir),
+    env: process.env,
+    stdio: 'inherit'
+  };
+  const cmd = `npm ${command}`;
+  npmlog(`executing '${cmd}'`);
+  await childProcess.execSync(cmd, opts);
 }
 
 function remoteNpmGet(packageDir: string): Promise<NpmRegistryClient.Data> {
@@ -72,34 +69,29 @@ interface ReleaseData {
   requireRelease?: boolean;
 }
 
-function getReleaseData(host: Host, packageDir: string, npm: NpmRegistryClient.Data): Promise<ReleaseData> {
-  return Promise.resolve()
-    .then(() => getPackageJson(host, packageDir)
-        .then(pkg => ({
-          npm,
-          pkg
-        } as ReleaseData)))
-    .then(data => {
-      data.tag = ((data.pkg.publishConfig || {}).tag || 'latest') as string;
-      if (data.npm) {
-        data.lastVersion = data.npm['dist-tags'][data.tag];
-        if (data.lastVersion) {
-          const npmVersionData = data.npm.versions[data.lastVersion];
-          data.lastGitHash = npmVersionData.gitHead || `${npmVersionData.name}-${npmVersionData.version}`;
-        }
-      }
-      return data;
-    })
-    .then(data => {
-      if (!data.lastGitHash) {
-        return git(packageDir, 'rev-list --abbrev-commit --max-parents=0 HEAD')
-          .then(firstGitHash => {
-            data.lastGitHash = firstGitHash;
-            return data;
-          });
-      }
-      return data;
-    });
+function getNpmTag(pkg: PackageJson): string {
+  return pkg.publishConfig && pkg.publishConfig.tag ? pkg.publishConfig.tag : 'latest';
+}
+
+async function getReleaseData(host: Host, packageDir: string, npm: NpmRegistryClient.Data): Promise<ReleaseData> {
+  const pkg = await getPackageJson(host, packageDir);
+  const data = {
+    npm,
+    pkg
+  } as ReleaseData;
+  data.tag = getNpmTag(pkg);
+  if (data.npm) {
+    data.lastVersion = data.npm['dist-tags'][data.tag];
+    if (data.lastVersion) {
+      const npmVersionData = data.npm.versions[data.lastVersion];
+      data.lastGitHash = npmVersionData.gitHead || `${npmVersionData.name}-${npmVersionData.version}`;
+    }
+  }
+  if (!data.lastGitHash) {
+    const firstGitHash = await git(packageDir, 'rev-list --abbrev-commit --max-parents=0 HEAD');
+    data.lastGitHash = firstGitHash;
+  }
+  return data;
 }
 
 interface Commit {
@@ -108,120 +100,96 @@ interface Commit {
   message: conventionalCommitsParser.CommitMessage;
 }
 
-function getReleaseCommits(packageDir: string, data: ReleaseData): Promise<ReleaseData> {
-  return Promise.resolve()
-    .then(() => {
-      return git(packageDir, `log --extended-regexp --format=%h==HASH==%B==END== ${data.lastGitHash}..HEAD -- .`)
-        .then(stdout => stdout.split('==END==\n'))
-        .then(commits => commits.filter(commit => Boolean(commit.trim())))
-        .then(commits => commits.map(commit => {
-          const parts = commit.split('==HASH==');
-          return {
-            hash: parts[0],
-            rawMessage: parts[1]
-          } as Commit;
-        }))
-        .then(commits => commits.map(commit => {
-          commit.message = conventionalCommitsParser.sync(commit.rawMessage);
-          commit.message.hash = commit.hash;
-          return commit.message;
-        }))
-        .then(commits => commits.filter(commit => commit.scope === packageDir))
-        .then(commits => {
-          data.commits = commits;
-          data.requireRelease = data.commits.length > 0;
-        })
-        .then(() => {
-          const didUpdatePackageJson = (commit: conventionalCommitsParser.CommitMessage) => {
-            return git(packageDir, `show ${commit.hash}`)
-              .then(diff => {
-                commit.updatesPackageJson = diff.indexOf(`packages/${packageDir}/package.json`) > -1;
-              });
-          };
-          return Promise.resolve()
-            .then(() => forEach(data.commits, commit => (didUpdatePackageJson(commit), true)))
-            .then(() => data);
-        });
-    });
+async function getReleaseCommits(packageDir: string, data: ReleaseData): Promise<ReleaseData> {
+  let stdout = await git(packageDir,
+    `log --extended-regexp --format=%h==HASH==%B==END== ${data.lastGitHash}..HEAD -- .`);
+  const commits = stdout.split('==END==\n')
+    .filter(commit => Boolean(commit.trim()))
+    .map(commit => {
+      const parts = commit.split('==HASH==');
+      return {
+        hash: parts[0],
+        rawMessage: parts[1]
+      } as Commit;
+    })
+    .map(commit => {
+      commit.message = conventionalCommitsParser.sync(commit.rawMessage);
+      commit.message.hash = commit.hash;
+      return commit.message;
+    })
+    .filter(commit => commit.scope === packageDir);
+  data.commits = commits;
+  data.requireRelease = data.commits.length > 0;
+  const didUpdatePackageJson = async (commit: conventionalCommitsParser.CommitMessage) => {
+    const diff = await git(packageDir, `show ${commit.hash}`);
+    commit.updatesPackageJson = diff.indexOf(`packages/${packageDir}/package.json`) > -1;
+  };
+  await forEach<conventionalCommitsParser.CommitMessage, void>(commits, commit => didUpdatePackageJson(commit));
+  return data;
 }
 
 function isBreakingChange(commit: conventionalCommitsParser.CommitMessage): boolean {
   return Boolean(commit.footer && commit.footer.indexOf('BREAKING CHANGE:\n') > -1);
 }
 
-function getNextVersion(_packageDir: string, data: ReleaseData): Promise<ReleaseData> {
+async function getNextVersion(_packageDir: string, data: ReleaseData): Promise<ReleaseData> {
   const releases = ['patch', 'minor', 'major'];
   const typeToReleaseIndex = {
     fix: 0,
     feat: 1
   };
-
-  return Promise.resolve()
-    .then(() => {
-      const relaseIndex = data.commits.reduce((release, commit) => {
-        let result = release > (typeToReleaseIndex[commit.type] || 0) ?
-          release :
-          typeToReleaseIndex[commit.type] || release;
-        if (isBreakingChange(commit)) {
-          result = 2;
-        }
-        return result;
-      }, 0);
-      data.release = releases[relaseIndex];
-      if (data.lastVersion) {
-        data.nextVersion = semver.inc(data.lastVersion, data.release);
-      } else {
-        data.nextVersion = data.pkg.version;
-      }
-      return data;
-    });
+  const relaseIndex = data.commits.reduce((release, commit) => {
+    let result = release > (typeToReleaseIndex[commit.type] || 0) ?
+      release :
+      typeToReleaseIndex[commit.type] || release;
+    if (isBreakingChange(commit)) {
+      result = 2;
+    }
+    return result;
+  }, 0);
+  data.release = releases[relaseIndex];
+  if (data.lastVersion) {
+    data.nextVersion = semver.inc(data.lastVersion, data.release);
+  } else {
+    data.nextVersion = data.pkg.version;
+  }
+  return data;
 }
 
-function git(packageDir: string, command: string): Promise<string> {
-  return Promise.resolve()
-    .then(() => {
-      const opts = {
-        cwd: path.join(packagesDirectory, packageDir),
-        env: process.env
-      };
-      const cmd = `git ${command}`;
-      gitlog(`executing '${cmd}'`);
-      return childProcess.execSync(cmd, opts);
-    })
-    .then(buffer => buffer.toString().trim());
+async function git(packageDir: string, command: string): Promise<string> {
+  const opts = {
+    cwd: path.join(packagesDirectory, packageDir),
+    env: process.env
+  };
+  const cmd = `git ${command}`;
+  gitlog(`executing '${cmd}'`);
+  const buffer = await childProcess.execSync(cmd, opts);
+  return buffer.toString().trim();
 }
 
-function runOnPackages(host: Host, commands: Commands, command: string, args: string[]): Promise<void> {
-  return getOrderedPackages(host)
-    .then(packages => {
-      return forEach(packages, file => {
-        return commands[command].apply(null, ([] as any).concat([file], args));
-      });
-    })
-    .then(() => (void 0));
+async function runOnPackages(host: Host, commands: Commands, command: string, args: string[]): Promise<void> {
+  const packages = await getOrderedPackages(host);
+  await forEach(packages, file => commands[command].apply(null, ([] as any).concat([file], args)));
 }
 
-function runCommandBootstrap(host: Host, packageDir: string): Promise<void> {
-  return Promise.resolve()
-    .then(() => {
-      return withPatchedPackageJson(host, packageDir, () => {
-        return npm(packageDir, 'install')
-          .then(() => npm(packageDir, 'prune'));
-      })
-      .then(() => linkDependencies(host, packageDir));
-    });
+async function runCommandBootstrap(host: Host, packageDir: string): Promise<void> {
+  await withPatchedPackageJson(host, packageDir, async () => {
+    await npm(packageDir, 'install');
+    await npm(packageDir, 'prune');
+  });
+  await linkDependencies(host, packageDir);
 }
 
 function runCommandReset(host: Host, packageDir: string): Promise<void> {
   return host.remove(path.join(packagesDirectory, packageDir, 'node_modules'));
 }
 
-function updatePackageJson(host: Host, packageDir: string, fn: (input: string) => string): Promise<void> {
+async function updatePackageJson(host: Host, packageDir: string, fn: (input: string) => string): Promise<void> {
   const packageJson = path.join(packagesDirectory, packageDir, 'package.json');
-  return host.readfile(packageJson)
-    .then(buffer => buffer.toString())
-    .then(data => fn(data))
-    .then(data => host.writeFile(packageJson, data));
+  const buffer = await host.readfile(packageJson);
+  const data = await buffer.toString();
+  await fn(data);
+  await host.writeFile(packageJson, data);
 }
 
 function incrementPackageVersion(host: Host, packageDir: string, data: ReleaseData): Promise<void> {
@@ -229,59 +197,44 @@ function incrementPackageVersion(host: Host, packageDir: string, data: ReleaseDa
     content.replace(/^(\s*"version"\s*:\s*")\d+(?:\.\d+(?:\.\d+)?)?("\s*(?:,\s*)?)$/gm, `$1${data.nextVersion}$2`));
 }
 
-function updateDependencies(host: Host, packageDir: string, data: ReleaseData): Promise<void> {
-  return getPackages(host)
-    .then(packages => forEach(packages, dependency => {
-      if (dependency in data.pkg.devDependencies || dependency in data.pkg.dependencies) {
-        return getPackageJson(host, dependency)
-          .then(pkg => {
-            updatePackageJson(host, packageDir, content => {
-              return content.replace(new RegExp(
-                `^(\\s*"${dependency}"\\s*:\\s*")\\d+(?:\\.\\d+(?:\\.\\d+)?)?("\\s*(?:,\\s*)?)$`, 'gm'),
-                `$1${pkg.version}$2`);
-            });
-            return true;
-          });
-      }
-      return true;
-    }))
-    .then(() => undefined);
+async function updateDependencies(host: Host, packageDir: string, data: ReleaseData): Promise<void> {
+  const packages = await getPackages(host);
+  await forEach<string, void>(packages, async dependency => {
+    if (dependency in data.pkg.devDependencies || dependency in data.pkg.dependencies) {
+      const pkg = await getPackageJson(host, dependency);
+      updatePackageJson(host, packageDir, content => {
+        return content.replace(new RegExp(
+          `^(\\s*"${dependency}"\\s*:\\s*")\\d+(?:\\.\\d+(?:\\.\\d+)?)?("\\s*(?:,\\s*)?)$`, 'gm'),
+          `$1${pkg.version}$2`);
+      });
+    }
+  });
 }
 
-function runCommandRelease(host: Host, packageDir: string): Promise<void> {
-  return git('..', `status --porcelain`)
-    .then(stdout => {
-      if (stdout !== '') {
-        throw new Error('Git workspace not clean!');
-      }
-    })
-    .then(() => remoteNpmGet(packageDir))
-    .then(npm => getReleaseData(host, packageDir, npm))
-    .then(data => getReleaseCommits(packageDir, data))
-    .then(data => getNextVersion(packageDir, data))
-    .then(data => {
-      if (data.requireRelease) {
-        outputReleaseSummary(packageDir, data);
-        return incrementPackageVersion(host, packageDir, data)
-          .then(() => updateDependencies(host, packageDir, data))
-          .then(() => runCommandNpmRun(host, packageDir, 'release'))
-          .then(() => runCommandNpmRun(host, packageDir, 'test'))
-          .then(() => git('..', `status --porcelain`))
-          .then(stdout => {
-            if (stdout !== '') {
-              const commitMsg = `chore(${packageDir}): releases ${data.nextVersion}\n\n` +
-                getCommitList('* ', '\n', data);
-              return git('..', `add .`)
-                .then(() => git('..', `commit -m "${commitMsg}"`))
-                .then(() => false);
-            }
-            return true;
-          });
-      }
-      console.log(`No release for ${packageDir} required`);
-      return true;
-    })
-    .then(() => (void 0));
+async function runCommandRelease(host: Host, packageDir: string): Promise<void> {
+  let stdout = await git('..', `status --porcelain`);
+  if (stdout !== '') {
+    throw new Error('Git workspace not clean!');
+  }
+  const npm = await remoteNpmGet(packageDir);
+  let data = await getReleaseData(host, packageDir, npm);
+  data = await getReleaseCommits(packageDir, data);
+  data = await getNextVersion(packageDir, data);
+  if (!data.requireRelease) {
+    console.log(`No release for ${packageDir} required`);
+    return;
+  }
+  outputReleaseSummary(packageDir, data);
+  await incrementPackageVersion(host, packageDir, data);
+  await updateDependencies(host, packageDir, data);
+  await runCommandNpmRun(host, packageDir, 'release');
+  await runCommandNpmRun(host, packageDir, 'test');
+  stdout = await git('..', `status --porcelain`);
+  if (stdout !== '') {
+    const commitMsg = `chore(${packageDir}): releases ${data.nextVersion}\n\n` + getCommitList('* ', '\n', data);
+    await git('..', `add .`);
+    await git('..', `commit -m "${commitMsg}"`);
+  }
 }
 
 function outputReleaseSummary(packageDir: string, data: ReleaseData): void {
@@ -302,71 +255,60 @@ function getCommitList(prepend: string, append: string, data: ReleaseData): stri
     .join('');
 }
 
-function runCommandTestRelease(host: Host, packageDir: string): Promise<void> {
-  return remoteNpmGet(packageDir)
-    .then(npm => getReleaseData(host, packageDir, npm))
-    .then(data => getReleaseCommits(packageDir, data))
-    .then(data => getNextVersion(packageDir, data))
-    .then(data => outputReleaseSummary(packageDir, data));
+async function runCommandTestRelease(host: Host, packageDir: string): Promise<void> {
+  const npm = await remoteNpmGet(packageDir);
+  let data = await getReleaseData(host, packageDir, npm);
+  data = await getReleaseCommits(packageDir, data);
+  data = await getNextVersion(packageDir, data);
+  await outputReleaseSummary(packageDir, data);
 }
 
-function runCommandNpmRun(host: Host, packageDir: string, task: string): Promise<void> {
-  return Promise.resolve()
-    .then(() => getPackageJson(host, packageDir))
-    .then(pkg => task in pkg.scripts)
-    .then(hasTask => hasTask ? npm(packageDir, `run ${task}`) : console.log(`No ${task} script for ${packageDir}`));
+async function runCommandNpmRun(host: Host, packageDir: string, task: string): Promise<void> {
+  const pkg = await getPackageJson(host, packageDir);
+  if (task in pkg.scripts) {
+    await npm(packageDir, `run ${task}`);
+  } else {
+    console.log(`No ${task} script for ${packageDir}`);
+  }
 }
 
-function runCommandNpm(host: Host, packageDir: string, args: string[]): Promise<void> {
-  return Promise.resolve()
-    .then(() => withPatchedPackageJson(host, packageDir, () => {
-      return npm(packageDir, args.join(' '));
-    }));
+async function runCommandNpm(host: Host, packageDir: string, args: string[]): Promise<void> {
+  await withPatchedPackageJson(host, packageDir, () => {
+    return npm(packageDir, args.join(' '));
+  });
 }
 
-function runCommandPublish(host: Host, packageDir: string): Promise<void> {
-  return remoteNpmGet(packageDir)
-    .then(npm => getReleaseData(host, packageDir, npm))
-    .then(data => {
-      if (data.lastVersion === data.pkg.version) {
-        console.log(`No publish for ${packageDir} requried; Already published to npm`);
-        return true;
-      }
-      const tag = `${data.pkg.name}-${data.pkg.version}`;
-      return git(packageDir, 'tag')
-        .then(stdout => {
-          if (stdout.match(new RegExp(`^${tag}$`, 'm'))) {
-            return git(packageDir, `rev-list --abbrev-commit -n 1 ${tag}`)
-              .then(hash => console.log(`No git tag for ${packageDir} requried; Already tagged commit ${hash}`))
-              .then(() => (void 0));
-          }
-          return getReleaseCommits(packageDir, data)
-            .then(() => data.commits.find(commit => commit.updatesPackageJson || false))
-            .then(commit => {
-              if (!commit) {
-                throw new Error('No release commit found');
-              }
-              return commit;
-            })
-            .then(commit => git('..', `tag ${tag} ${commit!.hash}`))
-            .then(() => (void 0));
-        })
-        .then(() => git('..', 'push --tags'))
-        .then(() => git('..', 'remote -v'))
-        .then((stdout: string) => (stdout.match(/^\w+\s+([^ ]+)\s+\(\w+\)$/m) as string[])[1])
-        .then((url: string) => git('..', `clone ${url} publish-temp`))
-        .then(() => git(path.join('..', 'publish-temp'), `checkout ${tag}`))
-        .then(() => npm(path.join('..', 'publish-temp', 'packages', packageDir), 'install'))
-        .then(() => npm(path.join('..', 'publish-temp', 'packages', packageDir), 'publish'))
-        .then(() => host.remove(path.join(process.cwd(), 'publish-temp')))
-        .catch((err: Error) => {
-          return host.remove(path.join(process.cwd(), 'publish-temp')).then(() => {
-            throw err;
-          });
-        })
-        .then(() => false);
-    })
-    .then(() => (void 0));
+async function runCommandPublish(host: Host, packageDir: string): Promise<void> {
+  const npmData = await remoteNpmGet(packageDir);
+  const data = await getReleaseData(host, packageDir, npmData);
+  if (data.lastVersion === data.pkg.version) {
+    console.log(`No publish for ${packageDir} requried; Already published to npm`);
+    return;
+  }
+  const tag = `${data.pkg.name}-${data.pkg.version}`;
+  try {
+    let stdout = await git(packageDir, 'tag');
+    if (stdout.match(new RegExp(`^${tag}$`, 'm'))) {
+      const hash = await git(packageDir, `rev-list --abbrev-commit -n 1 ${tag}`);
+      console.log(`No git tag for ${packageDir} requried; Already tagged commit ${hash}`);
+      return;
+    }
+    await getReleaseCommits(packageDir, data);
+    const commit = data.commits.find(commit => commit.updatesPackageJson || false);
+    if (!commit) {
+      throw new Error('No release commit found');
+    }
+    await git('..', `tag ${tag} ${commit!.hash}`);
+    await git('..', 'push --tags');
+    stdout = await git('..', 'remote -v');
+    const url = (stdout.match(/^\w+\s+([^ ]+)\s+\(\w+\)$/m) as string[])[1];
+    await git('..', `clone ${url} publish-temp`);
+    await git(path.join('..', 'publish-temp'), `checkout ${tag}`);
+    await npm(path.join('..', 'publish-temp', 'packages', packageDir), 'install');
+    await npm(path.join('..', 'publish-temp', 'packages', packageDir), 'publish');
+  } finally {
+    await host.remove(path.join(process.cwd(), 'publish-temp'));
+  }
 }
 
 interface Commands {
@@ -457,13 +399,13 @@ if (process.argv.length < 3) {
   console.error('Missing task');
   process.exit(1);
 }
-
 const command = process.argv[2];
 const commandArguments = process.argv.slice(3);
 const start = new Date().getTime();
 const host = new DefaultHost();
-runOnPackages(host, commands, command, commandArguments)
-  .then(() => {
+(async function(): Promise<void> {
+  try {
+    await runOnPackages(host, commands, command, commandArguments);
     const end = new Date().getTime();
     console.log(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
@@ -472,8 +414,7 @@ runOnPackages(host, commands, command, commandArguments)
 
       -------------------------------------------------------------------------------
     `}\n`);
-  })
-  .catch(err => {
+  } catch (err) {
     const end = new Date().getTime();
     console.error(`\n${commonTags.stripIndent`
       -------------------------------------------------------------------------------
@@ -487,4 +428,5 @@ runOnPackages(host, commands, command, commandArguments)
       console.error(err.stack);
     }
     process.exit(1);
-  });
+  }
+})();

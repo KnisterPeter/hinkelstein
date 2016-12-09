@@ -16,47 +16,44 @@ function setup(): Host {
   };
 }
 
-test('getPackages should return all paths to packages in this monorepo', t => {
+test('getPackages should return all paths to packages in this monorepo', async t => {
   const host = setup();
-  host.readdir = () => {
-    return Promise.resolve(['a', 'b']);
-  };
-  return getPackages(host)
-    .then(packages => {
-      t.deepEqual(packages, ['a', 'b']);
-    });
+  host.readdir = async () => ['a', 'b'];
+
+  const packages = await getPackages(host);
+
+  t.deepEqual(packages, ['a', 'b']);
 });
 
-test('getOrderedPackages should return a list of packages ordered by dependency chain', t => {
+test('getOrderedPackages should return a list of packages ordered by dependency chain', async t => {
   const host = setup();
-  host.readdir = () => {
-    return Promise.resolve(['a', 'b', 'c']);
-  };
-  host.readJson = path => {
+  host.readdir = async () => ['a', 'b', 'c'];
+  host.readJson = async path => {
     if (/a[\/\\]package.json$/.test(path)) {
-      return Promise.resolve({
+      return {
         name: 'a',
         dependencies: {
           b: '*'
         }
-      });
+      };
     }
     if (/b[\/\\]package.json$/.test(path)) {
-      return Promise.resolve({
+      return {
         name: 'b'
-      });
+      };
     }
     if (/c[\/\\]package.json$/.test(path)) {
-      return Promise.resolve({
+      return {
         name: 'c',
         devDependencies: {
           b: '*'
         }
-      });
+      };
     }
     throw new Error(`Fail to read json from ${path}`);
   };
-  return getOrderedPackages(host).then(packages => {
-    t.deepEqual(packages, ['b', 'a', 'c']);
-  });
+
+  const packages = await getOrderedPackages(host);
+
+  t.deepEqual(packages, ['b', 'a', 'c']);
 });

@@ -15,7 +15,9 @@ export interface PackageJson {
   dependencies: {
     [name: string]: string;
   };
-  publishConfig?: any;
+  publishConfig?: {
+    tag: string;
+  };
 }
 
 export const packagesDirectory = path.join(process.cwd(), 'packages');
@@ -53,72 +55,54 @@ function sortDependencys(list: string[], pkgs: PackageJson[]): string[] {
   return list;
 }
 
-export function getOrderedPackages(host: Host): Promise<string[]> {
-  return getPackages(host)
-    .then(packages =>
-      readAllPackageJsonFiles(host, packages)
-        .then(pkgs => ({packages, pkgs})))
-    .then(context => sortDependencys(context.packages, context.pkgs));
+export async function getOrderedPackages(host: Host): Promise<string[]> {
+  const packages = await getPackages(host);
+  const pkgs = await readAllPackageJsonFiles(host, packages);
+  return sortDependencys(packages, pkgs);
 }
 
 export function getPackageJson(host: Host, packageDir: string): Promise<PackageJson> {
   return host.readJson(path.join(packagesDirectory, packageDir, 'package.json'));
 }
 
-export function patchPackageJson(host: Host, pkg: PackageJson): Promise<PackageJson> {
-  return getPackages(host)
-    .then(packages => {
-      packages.forEach(file => delete pkg.devDependencies[file]);
-      packages.forEach(file => delete pkg.dependencies[file]);
-    })
-    .then(() => pkg);
+export async function patchPackageJson(host: Host, pkg: PackageJson): Promise<PackageJson> {
+  const packages = await getPackages(host);
+  packages.forEach(file => delete pkg.devDependencies[file]);
+  packages.forEach(file => delete pkg.dependencies[file]);
+  return pkg;
 }
 
-function getPackageDependencies(host: Host, pkg: PackageJson): Promise<string[]> {
-  return getPackages(host)
-    .then(packages => {
-      return ([] as string[]).concat(
-        packages.filter(file => file in pkg.devDependencies),
-        packages.filter(file => file in pkg.dependencies)
-      );
-    });
+async function getPackageDependencies(host: Host, pkg: PackageJson): Promise<string[]> {
+  const packages = await getPackages(host);
+  return ([] as string[]).concat(
+    packages.filter(file => file in pkg.devDependencies),
+    packages.filter(file => file in pkg.dependencies)
+  );
 }
 
-export function linkDependencies(host: Host, packageDir: string): Promise<void> {
-  return getPackages(host)
-    .then(() => {
-      return getPackageJson(host, packageDir)
-        .then(pkg => getPackageDependencies(host, pkg))
-        .then(dependencies => {
-          return forEach(dependencies,
-              dependency => {
-                const dependecyModulPath = path.join(packagesDirectory, packageDir, 'node_modules', dependency);
-                return host.writeFile(path.join(dependecyModulPath, 'index.js'),
-                    `module.exports = require('../../../${dependency}/')`)
-                  .then(() => host.writeFile(path.join(dependecyModulPath, 'index.d.ts'),
-                    `export * from '../../../${dependency}/index';`))
-                  .then(() => true);
-              });
-        });
-    })
-    .then(() => undefined);
+export async function linkDependencies(host: Host, packageDir: string): Promise<void> {
+  await getPackages(host);
+  const pkg = await getPackageJson(host, packageDir);
+  const dependencies = await getPackageDependencies(host, pkg);
+  await forEach<string, void>(dependencies, async dependency => {
+    const dependecyModulPath = path.join(packagesDirectory, packageDir, 'node_modules', dependency);
+    await host.writeFile(path.join(dependecyModulPath, 'index.js'),
+        `module.exports = require('../../../${dependency}/')`);
+    await host.writeFile(path.join(dependecyModulPath, 'index.d.ts'),
+        `export * from '../../../${dependency}/index';`);
+  });
 }
 
-export function withPatchedPackageJson(host: Host, packageDir: string, fn: () => Promise<void>): Promise<void> {
+export async function withPatchedPackageJson(host: Host, packageDir: string, fn: () => Promise<void>): Promise<void> {
   const packageJsonPath = path.join(packagesDirectory, packageDir, 'package.json');
   const packageJsonBackupPath = path.join(packagesDirectory, packageDir, 'package.json.orig');
-  return host.copy(packageJsonPath, packageJsonBackupPath)
-    .then(() => {
-      return host.readJson(packageJsonPath)
-        .then(pkg => patchPackageJson(host, pkg))
-        .then(pkg => host.writeJson(packageJsonPath, pkg))
-        .then(() => fn())
-        .catch(err => {
-          return host.move(packageJsonBackupPath, packageJsonPath, {clobber: true})
-            .then(() => {
-              throw err;
-            });
-        });
-    })
-    .then(() => host.move(packageJsonBackupPath, packageJsonPath, {clobber: true}));
+  await host.copy(packageJsonPath, packageJsonBackupPath);
+  try {
+    const pkg = await host.readJson(packageJsonPath);
+    await patchPackageJson(host, pkg);
+    await host.writeJson(packageJsonPath, pkg);
+    await fn();
+  } finally {
+    await host.move(packageJsonBackupPath, packageJsonPath, {clobber: true});
+  }
 }
