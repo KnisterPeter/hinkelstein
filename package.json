@@ -42,7 +42,7 @@
     "@knisterpeter/standard-tslint": "^1.0.3",
     "@types/common-tags": "1.2.5",
     "@types/fs-extra": "0.0.37",
-    "@types/node": "7.0.4",
+    "@types/node": "7.0.5",
     "@types/semver": "5.3.30",
     "ava": "0.18.1",
     "conventional-changelog-cli": "1.2.0",
