@@ -46,7 +46,7 @@
     "@types/semver": "5.3.30",
     "ava": "0.18.2",
     "conventional-changelog-cli": "1.2.0",
-    "conventional-changelog-lint": "1.1.0",
+    "conventional-changelog-lint": "1.1.1",
     "coveralls": "2.11.16",
     "cz-customizable": "4.0.0",
     "husky": "0.13.2",
