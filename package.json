@@ -52,7 +52,7 @@
     "husky": "0.13.3-0",
     "nyc": "10.1.2",
     "rimraf": "2.6.1",
-    "source-map-support": "0.4.11",
+    "source-map-support": "0.4.12",
     "standard-version": "4.0.0",
     "tslint": "4.5.1",
     "typescript": "2.1.6"
