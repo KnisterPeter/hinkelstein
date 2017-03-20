@@ -101,7 +101,7 @@ interface Commit {
 }
 
 async function getReleaseCommits(packageDir: string, data: ReleaseData): Promise<ReleaseData> {
-  let stdout = await git(packageDir,
+  const stdout = await git(packageDir,
     `log --extended-regexp --format=%h==HASH==%B==END== ${data.lastGitHash}..HEAD -- .`);
   const commits = stdout.split('==END==\n')
     .filter(commit => Boolean(commit.trim()))
@@ -120,7 +120,7 @@ async function getReleaseCommits(packageDir: string, data: ReleaseData): Promise
     .filter(commit => commit.scope === packageDir);
   data.commits = commits;
   data.requireRelease = data.commits.length > 0;
-  const didUpdatePackageJson = async (commit: conventionalCommitsParser.CommitMessage) => {
+  const didUpdatePackageJson = async(commit: conventionalCommitsParser.CommitMessage) => {
     const diff = await git(packageDir, `show ${commit.hash}`);
     commit.updatesPackageJson = diff.indexOf(`packages/${packageDir}/package.json`) > -1;
   };
@@ -173,7 +173,7 @@ async function runOnPackages(host: Host, commands: Commands, command: string, ar
 }
 
 async function runCommandBootstrap(host: Host, packageDir: string): Promise<void> {
-  await withPatchedPackageJson(host, packageDir, async () => {
+  await withPatchedPackageJson(host, packageDir, async() => {
     await npm(packageDir, 'install');
     await npm(packageDir, 'prune');
   });
