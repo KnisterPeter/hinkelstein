@@ -18,7 +18,7 @@ function setup(): Host {
 
 test('getPackages should return all paths to packages in this monorepo', async t => {
   const host = setup();
-  host.readdir = async () => ['a', 'b'];
+  host.readdir = async() => ['a', 'b'];
 
   const packages = await getPackages(host);
 
@@ -27,7 +27,7 @@ test('getPackages should return all paths to packages in this monorepo', async t
 
 test('getOrderedPackages should return a list of packages ordered by dependency chain', async t => {
   const host = setup();
-  host.readdir = async () => ['a', 'b', 'c'];
+  host.readdir = async() => ['a', 'b', 'c'];
   host.readJson = async path => {
     if (/a[\/\\]package.json$/.test(path)) {
       return {

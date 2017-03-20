@@ -2,8 +2,6 @@ environment:
   matrix:
     - nodejs_version: '6'
     - nodejs_version: '4'
-cache:
-  - node_modules -> .cleanup-appveyor-caches
 install:
   - ps: Install-Product node $env:nodejs_version
   - set CI=true
@@ -22,6 +20,7 @@ branches:
     - master
 build: off
 before_test:
+  - npm cache clean
   - npm install
 test_script:
   - npm run test
