@@ -1,13 +1,38 @@
 {
   "version": "0.1.0",
-  "command": "${workspaceRoot}/node_modules/.bin/tsc",
-  "args": [
-    "--sourceMap",
-    "--watch"
-  ],
-  "isShellCommand": true,
-  "showOutput": "silent",
-  "isBuildCommand": true,
-  "isWatching": true,
-  "problemMatcher": "$tsc-watch"
+  "tasks": [
+    {
+      "taskName": "build",
+      "command": "${workspaceRoot}/node_modules/.bin/tsc",
+      "args": [
+        "--sourceMap",
+        "--watch"
+      ],
+      "isShellCommand": true,
+      "showOutput": "silent",
+      "isBuildCommand": true,
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch"
+    },
+    {
+      "taskName": "lint",
+      "command": "npm",
+      "args": [
+        "run",
+        "linter"
+      ],
+      "problemMatcher": {
+        "owner": "tslint",
+        "fileLocation": ["relative", "${workspaceRoot}"],
+        "severity": "warning",
+        "pattern": {
+          "regexp": "^(\\S.*)\\[(\\d+), (\\d+)\\]:\\s+(.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        }
+      }
+    }
+  ]
 }

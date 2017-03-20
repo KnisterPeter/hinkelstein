@@ -2,9 +2,9 @@ import * as fs from 'fs';
 import * as fsExtra from 'fs-extra';
 
 function promisify(fn: Function): (...args: any[]) => Promise<any> {
-  return function (...args): Promise<any> {
+  return function(...args): Promise<any> {
     return new Promise((resolve, reject) => {
-      fn.apply(null, ([] as any[]).concat(args, function (...resultArgs: any[]): void {
+      fn.apply(null, ([] as any[]).concat(args, function(...resultArgs: any[]): void {
         if (resultArgs[0]) {
           return reject(resultArgs[0]);
         }
