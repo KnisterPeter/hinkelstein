@@ -36,7 +36,7 @@ function findPkg(needle: string, pkgs: PackageJson[]): PackageJson {
     throw new Error('No matching package.json found');
   }
   return pkg;
-};
+}
 
 function containsDependency(name: string, pkg: PackageJson): boolean {
   return name in (pkg.devDependencies || {}) || name in (pkg.dependencies || {});
