@@ -55,7 +55,7 @@
     "source-map-support": "0.4.15",
     "standard-version": "4.0.0",
     "tslint": "5.1.0",
-    "typescript": "2.2.2"
+    "typescript": "2.3.2"
   },
   "dependencies": {
     "common-tags": "1.4.0",
