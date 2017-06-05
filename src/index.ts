@@ -75,10 +75,10 @@ function getNpmTag(pkg: PackageJson): string {
 
 async function getReleaseData(host: Host, packageDir: string, npm: NpmRegistryClient.Data): Promise<ReleaseData> {
   const pkg = await getPackageJson(host, packageDir);
-  const data = {
+  const data: Partial<ReleaseData> = {
     npm,
     pkg
-  } as ReleaseData;
+  };
   data.tag = getNpmTag(pkg);
   if (data.npm) {
     data.lastVersion = data.npm['dist-tags'][data.tag];
@@ -91,7 +91,7 @@ async function getReleaseData(host: Host, packageDir: string, npm: NpmRegistryCl
     const firstGitHash = await git(packageDir, 'rev-list --abbrev-commit --max-parents=0 HEAD');
     data.lastGitHash = firstGitHash;
   }
-  return data;
+  return data as ReleaseData;
 }
 
 interface Commit {
@@ -110,9 +110,9 @@ async function getReleaseCommits(packageDir: string, data: ReleaseData): Promise
       return {
         hash: parts[0],
         rawMessage: parts[1]
-      } as Commit;
+      };
     })
-    .map(commit => {
+    .map((commit: Commit) => {
       commit.message = conventionalCommitsParser.sync(commit.rawMessage);
       commit.message.hash = commit.hash;
       return commit.message;
@@ -298,7 +298,7 @@ async function runCommandPublish(host: Host, packageDir: string): Promise<void> 
     if (!commit) {
       throw new Error('No release commit found');
     }
-    await git('..', `tag ${tag} ${commit!.hash}`);
+    await git('..', `tag ${tag} ${commit.hash}`);
     await git('..', 'push --tags');
     stdout = await git('..', 'remote -v');
     const url = (stdout.match(/^\w+\s+([^ ]+)\s+\(\w+\)$/m) as string[])[1];
