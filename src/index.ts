@@ -63,7 +63,7 @@ interface ReleaseData {
   commits: conventionalCommitsParser.CommitMessage[];
   tag?: string;
   nextVersion?: string;
-  release?: string;
+  release?: semver.ReleaseType;
   lastVersion?: string;
   lastGitHash?: string;
   requireRelease?: boolean;
@@ -147,7 +147,7 @@ async function getNextVersion(_packageDir: string, data: ReleaseData): Promise<R
     }
     return result;
   }, 0);
-  data.release = releases[relaseIndex];
+  data.release = releases[relaseIndex] as semver.ReleaseType;
   if (data.lastVersion) {
     data.nextVersion = semver.inc(data.lastVersion, data.release);
   } else {
