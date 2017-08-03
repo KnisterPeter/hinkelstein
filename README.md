@@ -1,5 +1,7 @@
 # hinkelstein
 
+[![Greenkeeper badge](https://badges.greenkeeper.io/KnisterPeter/hinkelstein.svg)](https://greenkeeper.io/)
+
 [![GitHub license](https://img.shields.io/github/license/KnisterPeter/hinkelstein.svg)](https://github.com/KnisterPeter/hinkelstein)
 [![Travis](https://img.shields.io/travis/KnisterPeter/hinkelstein.svg)](https://travis-ci.org/KnisterPeter/hinkelstein)
 [![appveyor](https://ci.appveyor.com/api/projects/status/mtdvnje0y7vcvk39/branch/master?svg=true)](https://ci.appveyor.com/project/KnisterPeter/hinkelstein/branch/master)
