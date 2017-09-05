@@ -149,7 +149,7 @@ async function getNextVersion(_packageDir: string, data: ReleaseData): Promise<R
   }, 0);
   data.release = releases[relaseIndex] as semver.ReleaseType;
   if (data.lastVersion) {
-    data.nextVersion = semver.inc(data.lastVersion, data.release);
+    data.nextVersion = semver.inc(data.lastVersion, data.release) || 'minor';
   } else {
     data.nextVersion = data.pkg.version;
   }
