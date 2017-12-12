@@ -41,7 +41,7 @@
   "devDependencies": {
     "@knisterpeter/standard-tslint": "^1.4.0",
     "@types/common-tags": "^1.2.5",
-    "@types/fs-extra": "^4.0.1",
+    "@types/fs-extra": "^5.0.0",
     "@types/node": "^8.0.25",
     "@types/semver": "^5.4.0",
     "ava": "^0.24.0",
