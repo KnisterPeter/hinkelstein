@@ -59,7 +59,7 @@
   },
   "dependencies": {
     "common-tags": "^1.4.0",
-    "conventional-commits-parser": "^2.0.0",
+    "conventional-commits-parser": "^3.0.0",
     "fs-extra": "^6.0.0",
     "npm-registry-client": "^8.3.0",
     "semver": "^5.3.0"
