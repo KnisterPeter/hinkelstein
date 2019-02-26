@@ -1,3 +1,5 @@
+# THIS PROJECT IS ABANDONED. No patches not security updates. Be careful.
+
 # hinkelstein
 
 [![GitHub license](https://img.shields.io/github/license/KnisterPeter/hinkelstein.svg)](https://github.com/KnisterPeter/hinkelstein)
